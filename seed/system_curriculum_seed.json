@@ -1,0 +1,26 @@
+[
+  {
+    "title": "A0 Survival English - Introductions",
+    "level": "A0",
+    "unit": "Introductions",
+    "sentences": [
+      {"en": "Hello, my name is David.", "he": "שלום, קוראים לי דוד."},
+      {"en": "I am happy to meet you.", "he": "אני שמח לפגוש אותך."},
+      {"en": "I live in Jerusalem.", "he": "אני גר בירושלים."},
+      {"en": "I speak a little English.", "he": "אני מדבר קצת אנגלית."},
+      {"en": "Can you help me please?", "he": "אתה יכול לעזור לי בבקשה?"}
+    ]
+  },
+  {
+    "title": "A1 Daily Life - Morning Routine",
+    "level": "A1",
+    "unit": "Daily Life",
+    "sentences": [
+      {"en": "I wake up early in the morning.", "he": "אני קם מוקדם בבוקר."},
+      {"en": "I drink coffee before work.", "he": "אני שותה קפה לפני העבודה."},
+      {"en": "I go to school by bus.", "he": "אני נוסע לבית הספר באוטובוס."},
+      {"en": "I study English every day.", "he": "אני לומד אנגלית כל יום."},
+      {"en": "I want to speak with confidence.", "he": "אני רוצה לדבר בביטחון."}
+    ]
+  }
+]
