@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from app.services.mastery_engine import update_sentence_result
 
 from app.db.supabase import get_supabase
 from app.schemas.attempt import CreateAttemptRequest, AttemptResponse
@@ -74,6 +75,13 @@ def create_attempt(payload: CreateAttemptRequest):
         raise HTTPException(status_code=500, detail="Failed to create attempt")
 
     row = res.data[0]
+    
+    sentence_result = update_sentence_result(
+    payload=payload,
+    scoring=scoring,
+    attempt_number=attempt_number,
+    decision=decision,
+)
 
     return {
         "id": row["id"],
@@ -93,4 +101,5 @@ def create_attempt(payload: CreateAttemptRequest):
         "message": message,
         "missing_words": scoring["missing_words"],
         "extra_words": scoring["extra_words"],
+        "sentence_result": sentence_result,
     }
