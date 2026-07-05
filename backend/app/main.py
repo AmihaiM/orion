@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.health import router as health_router
 from app.api.missions import router as missions_router
 from app.api.learning_sessions import router as learning_sessions_router
+from app.api.attempts import router as attempts_router
 
 app = FastAPI(
     title="Orion SLE API",
@@ -25,7 +26,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(missions_router)
 app.include_router(learning_sessions_router)
-
+app.include_router(attempts_router)
 
 @app.get("/")
 def root():
