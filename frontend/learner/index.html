@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orion Learner v0.1</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Orion SLE</p>
+        <h1>Mission Practice</h1>
+        <p class="subtitle">בחר Mission, התחל Session, תרגל משפטים וקבל ציון בסיסי.</p>
+      </div>
+      <div class="status-pill" id="apiStatus">API: checking...</div>
+    </section>
+
+    <section class="card" id="missionPanel">
+      <h2>1. Missions</h2>
+      <button id="loadMissionsBtn">טען Missions</button>
+      <div id="missionsList" class="list"></div>
+    </section>
+
+    <section class="card hidden" id="practicePanel">
+      <div class="practice-header">
+        <div>
+          <p class="eyebrow" id="missionMeta"></p>
+          <h2 id="missionTitle"></h2>
+        </div>
+        <div class="progress" id="progressText"></div>
+      </div>
+
+      <div class="sentence-box">
+        <p class="hebrew" id="hebrewText"></p>
+        <p class="english" id="englishText"></p>
+      </div>
+
+      <div class="actions">
+        <button id="speakBtn">🔊 שמע</button>
+        <button id="recordBtn" class="primary">🎤 הקלט</button>
+        <button id="nextBtn" disabled>הבא ➜</button>
+      </div>
+
+      <div id="feedback" class="feedback hidden"></div>
+    </section>
+
+    <section class="card hidden" id="completePanel">
+      <h2>🏆 Mission Complete</h2>
+      <p>סיימת את ה־Mission הראשון במסך הלומד.</p>
+      <div id="summary"></div>
+      <button id="restartBtn">חזור להתחלה</button>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
