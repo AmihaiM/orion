@@ -1,12 +1,11 @@
 from fastapi import APIRouter, HTTPException
-from app.services.mastery_engine import update_sentence_result
 
 from app.db.supabase import get_supabase
-from app.schemas.attempt import CreateAttemptRequest, AttemptResponse
-from app.services.scoring_engine import (
-    score_sentence,
-    decide_next_action,
-    praise_message,
+from app.schemas.attempt import CreateAttemptRequest
+from app.services.scoring_engine import score_sentence
+from app.services.mastery_engine import (
+    evaluate_mastery_decision,
+    update_sentence_result,
 )
 
 router = APIRouter(prefix="/attempts", tags=["attempts"])
@@ -30,28 +29,23 @@ def create_attempt(payload: CreateAttemptRequest):
 
     previous_attempts_res = (
         supabase.table("learning_attempts")
-        .select("id")
+        .select("id, passed")
         .eq("session_id", str(payload.session_id))
         .eq("sentence_id", str(payload.sentence_id))
+        .order("created_at")
         .execute()
     )
 
-    attempt_number = len(previous_attempts_res.data or []) + 1
+    previous_attempts = previous_attempts_res.data or []
 
     scoring = score_sentence(
         expected_text=expected_text,
         spoken_text=payload.spoken_text or "",
     )
 
-    decision = decide_next_action(
-        passed=scoring["passed"],
-        attempt_number=attempt_number,
-    )
-
-    message = praise_message(
-        passed=scoring["passed"],
-        attempt_number=attempt_number,
-        needs_review=decision["needs_review"],
+    decision = evaluate_mastery_decision(
+        scoring=scoring,
+        previous_attempts=previous_attempts,
     )
 
     insert_payload = {
@@ -66,7 +60,7 @@ def create_attempt(payload: CreateAttemptRequest):
         "recording_duration_ms": payload.recording_duration_ms,
         "silence_ms": payload.silence_ms,
         "words_per_minute": payload.words_per_minute,
-        "fluency_status": "needs_review" if decision["needs_review"] else "ok",
+        "fluency_status": "ok" if decision["mastered"] else "needs_practice",
     }
 
     res = supabase.table("learning_attempts").insert(insert_payload).execute()
@@ -75,13 +69,12 @@ def create_attempt(payload: CreateAttemptRequest):
         raise HTTPException(status_code=500, detail="Failed to create attempt")
 
     row = res.data[0]
-    
+
     sentence_result = update_sentence_result(
-    payload=payload,
-    scoring=scoring,
-    attempt_number=attempt_number,
-    decision=decision,
-)
+        payload=payload,
+        scoring=scoring,
+        decision=decision,
+    )
 
     return {
         "id": row["id"],
@@ -95,10 +88,10 @@ def create_attempt(payload: CreateAttemptRequest):
         "passed": row.get("passed"),
         "fluency_status": row.get("fluency_status"),
         "created_at": row["created_at"],
-        "attempt_number": attempt_number,
+        "attempt_number": decision["attempt_number"],
         "next_action": decision["next_action"],
         "needs_review": decision["needs_review"],
-        "message": message,
+        "message": decision["message"],
         "missing_words": scoring["missing_words"],
         "extra_words": scoring["extra_words"],
         "sentence_result": sentence_result,

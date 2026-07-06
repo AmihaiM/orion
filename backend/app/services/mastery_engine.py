@@ -4,7 +4,57 @@ from app.db.supabase import get_supabase
 MAX_ATTEMPTS_PER_SENTENCE = 5
 
 
-def update_sentence_result(payload, scoring, attempt_number, decision):
+def evaluate_mastery_decision(scoring: dict, previous_attempts: list[dict]) -> dict:
+    failed_before = sum(1 for a in previous_attempts if a.get("passed") is False)
+    passed_before = sum(1 for a in previous_attempts if a.get("passed") is True)
+    attempt_number = len(previous_attempts) + 1
+
+    if scoring["passed"]:
+        if failed_before > 0:
+            total_passes_after_failures = passed_before + 1
+            required_passes = failed_before + 1
+
+            if total_passes_after_failures < required_passes:
+                remaining = required_passes - total_passes_after_failures
+                return {
+                    "attempt_number": attempt_number,
+                    "next_action": "RETRY_SENTENCE",
+                    "needs_review": False,
+                    "mastered": False,
+                    "mastery_status": "reinforcement",
+                    "message": f"Excellent correction! Repeat it {remaining} more time(s) to make it stick 💪",
+                }
+
+        return {
+            "attempt_number": attempt_number,
+            "next_action": "NEXT_SENTENCE",
+            "needs_review": False,
+            "mastered": True,
+            "mastery_status": "mastered",
+            "message": "Excellent! Great speaking. Let's continue 🚀",
+        }
+
+    if attempt_number >= MAX_ATTEMPTS_PER_SENTENCE:
+        return {
+            "attempt_number": attempt_number,
+            "next_action": "NEXT_SENTENCE",
+            "needs_review": True,
+            "mastered": False,
+            "mastery_status": "needs_review",
+            "message": "Good effort. We'll review this sentence again later 💪",
+        }
+
+    return {
+        "attempt_number": attempt_number,
+        "next_action": "RETRY_SENTENCE",
+        "needs_review": False,
+        "mastered": False,
+        "mastery_status": "in_progress",
+        "message": "Good try. Stay on this sentence and try again 😊",
+    }
+
+
+def update_sentence_result(payload, scoring, decision):
     supabase = get_supabase()
 
     existing = (
@@ -19,35 +69,24 @@ def update_sentence_result(payload, scoring, attempt_number, decision):
 
     current = existing.data[0] if existing.data else None
 
-    best_score = max(
-        current.get("best_accuracy_score") or 0 if current else 0,
-        scoring["accuracy_score"],
-    )
-
-    total_attempts = (current.get("total_attempts") or 0 if current else 0) + 1
-    practice_attempts = (current.get("practice_attempts") or 0 if current else 0) + 1
-
-    mastered = scoring["passed"]
-    needs_review = decision["needs_review"]
-
-    mastery_status = (
-        "mastered" if mastered else
-        "needs_review" if needs_review else
-        "in_progress"
-    )
+    previous_total = current.get("total_attempts", 0) if current else 0
+    previous_practice = current.get("practice_attempts", 0) if current else 0
+    previous_best = current.get("best_accuracy_score", 0) if current else 0
 
     data = {
         "student_id": str(payload.student_id),
         "exercise_id": str(payload.mission_id),
         "sentence_id": str(payload.sentence_id),
         "session_id": str(payload.session_id),
-        "practice_attempts": practice_attempts,
-        "total_attempts": total_attempts,
-        "best_accuracy_score": best_score,
-        "mastery_status": mastery_status,
-        "fluency_status": "ok" if mastered else "needs_practice",
-        "mastered": mastered,
-        "finished_at": datetime.now(timezone.utc).isoformat() if mastered or needs_review else None,
+        "practice_attempts": previous_practice + 1,
+        "total_attempts": previous_total + 1,
+        "best_accuracy_score": max(previous_best or 0, scoring["accuracy_score"]),
+        "mastery_status": decision["mastery_status"],
+        "fluency_status": "ok" if decision["mastered"] else "needs_practice",
+        "mastered": decision["mastered"],
+        "finished_at": datetime.now(timezone.utc).isoformat()
+        if decision["mastered"] or decision["needs_review"]
+        else None,
     }
 
     if current:
