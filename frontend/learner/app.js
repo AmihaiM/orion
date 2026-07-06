@@ -29,6 +29,7 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
   });
+
   const data = await res.json();
   if (!res.ok) throw new Error(JSON.stringify(data));
   return data;
@@ -38,7 +39,7 @@ async function checkApi() {
   try {
     const health = await api("/health");
     apiStatus.textContent = `API: ${health.api}, Supabase: ${health.supabase}`;
-  } catch (err) {
+  } catch {
     apiStatus.textContent = "API: failed";
   }
 }
@@ -46,12 +47,14 @@ async function checkApi() {
 async function loadMissions() {
   missionsList.innerHTML = "טוען...";
   const data = await api("/missions");
+
   if (!data.missions.length) {
     missionsList.innerHTML = "לא נמצאו Missions.";
     return;
   }
 
   missionsList.innerHTML = "";
+
   data.missions.forEach((mission) => {
     const row = document.createElement("div");
     row.className = "mission-item";
@@ -69,6 +72,7 @@ async function loadMissions() {
 
 async function startMission(missionId) {
   const detail = await api(`/missions/${missionId}`);
+
   currentMission = detail;
   currentIndex = 0;
   results = [];
@@ -85,19 +89,28 @@ async function startMission(missionId) {
   missionPanel.classList.add("hidden");
   completePanel.classList.add("hidden");
   practicePanel.classList.remove("hidden");
+
   renderSentence();
 }
 
 function renderSentence() {
   const sentence = currentMission.sentences[currentIndex];
+
   missionMeta.textContent = `Session: ${currentSession.id}`;
   missionTitle.textContent = currentMission.mission.title;
   progressText.textContent = `${currentIndex + 1} / ${currentMission.sentences.length}`;
+
   hebrewText.textContent = sentence.hebrew_text || "";
   englishText.textContent = sentence.english_text;
+
   feedback.classList.add("hidden");
   feedback.innerHTML = "";
+
+  nextBtn.style.display = "none";
   nextBtn.disabled = true;
+
+  recordBtn.style.display = "inline-block";
+  recordBtn.disabled = false;
 }
 
 function speakCurrentSentence() {
@@ -107,25 +120,17 @@ function speakCurrentSentence() {
   speechSynthesis.speak(utterance);
 }
 
-function normalize(text) {
-  return text.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
-}
-
-function calculateAccuracy(expected, spoken) {
-  const expectedWords = normalize(expected).split(" ").filter(Boolean);
-  const spokenWords = normalize(spoken).split(" ").filter(Boolean);
-  if (!expectedWords.length) return 0;
-  let hits = 0;
-  expectedWords.forEach((word) => {
-    if (spokenWords.includes(word)) hits += 1;
-  });
-  return Math.round((hits / expectedWords.length) * 100);
-}
-
 function recordCurrentSentence() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
   if (!SpeechRecognition) {
-    showFeedback("הדפדפן לא תומך בזיהוי דיבור. נסה Chrome.", 0, "");
+    showFeedback({
+      message: "הדפדפן לא תומך בזיהוי דיבור. נסה Chrome.",
+      accuracy_score: 0,
+      spoken_text: "",
+      passed: false,
+      next_action: "RETRY_SENTENCE",
+    });
     return;
   }
 
@@ -136,19 +141,72 @@ function recordCurrentSentence() {
 
   recordBtn.textContent = "מקשיב...";
   recordBtn.disabled = true;
+  nextBtn.style.display = "none";
 
-  recognition.onresult = (event) => {
+  recognition.onresult = async (event) => {
     const spoken = event.results[0][0].transcript;
     const sentence = currentMission.sentences[currentIndex];
-    const score = calculateAccuracy(sentence.english_text, spoken);
-    results.push({ sentence_id: sentence.id, spoken, score });
-    showFeedback(score >= 85 ? "Great! Sentence passed." : "Good try. Let's improve it.", score, spoken);
-    nextBtn.disabled = false;
+
+    try {
+      const result = await api("/attempts", {
+        method: "POST",
+        body: JSON.stringify({
+          student_id: DEMO_STUDENT_ID,
+          mission_id: currentMission.mission.id,
+          sentence_id: sentence.id,
+          session_id: currentSession.id,
+          stage: "practice",
+          spoken_text: spoken,
+          accuracy_score: 0,
+          passed: false,
+          recording_duration_ms: 0,
+          silence_ms: 0,
+          words_per_minute: 0,
+          fluency_status: "",
+        }),
+      });
+
+      results.push({
+        sentence_id: sentence.id,
+        spoken,
+        score: result.accuracy_score,
+        passed: result.passed,
+        next_action: result.next_action,
+      });
+
+      showFeedback(result);
+
+      if (result.next_action === "NEXT_SENTENCE") {
+        nextBtn.style.display = "inline-block";
+        nextBtn.disabled = false;
+        recordBtn.style.display = "none";
+      } else if (result.next_action === "RETRY_SENTENCE") {
+        nextBtn.style.display = "none";
+        nextBtn.disabled = true;
+        recordBtn.style.display = "inline-block";
+      } else {
+        nextBtn.style.display = "inline-block";
+        nextBtn.disabled = false;
+      }
+    } catch (err) {
+      showFeedback({
+        message: `API error: ${err.message}`,
+        accuracy_score: 0,
+        spoken_text: spoken,
+        passed: false,
+        next_action: "RETRY_SENTENCE",
+      });
+    }
   };
 
   recognition.onerror = (event) => {
-    showFeedback(`Speech error: ${event.error}`, 0, "");
-    nextBtn.disabled = false;
+    showFeedback({
+      message: `Speech error: ${event.error}`,
+      accuracy_score: 0,
+      spoken_text: "",
+      passed: false,
+      next_action: "RETRY_SENTENCE",
+    });
   };
 
   recognition.onend = () => {
@@ -159,30 +217,57 @@ function recordCurrentSentence() {
   recognition.start();
 }
 
-function showFeedback(message, score, spoken) {
+function showFeedback(result) {
+  const score = result.accuracy_score || 0;
   const cls = score >= 85 ? "score-ok" : score >= 60 ? "score-warn" : "score-bad";
+
   feedback.innerHTML = `
-    <p><strong>${message}</strong></p>
+    <p><strong>${result.message || ""}</strong></p>
     <p>Score: <span class="${cls}">${score}%</span></p>
-    <p dir="ltr">You said: ${spoken || "—"}</p>
+    <p>Status: <strong>${result.passed ? "Passed" : "Try again"}</strong></p>
+    <p>Action: <strong>${result.next_action || ""}</strong></p>
+    <p dir="ltr">You said: ${result.spoken_text || "—"}</p>
   `;
+
   feedback.classList.remove("hidden");
 }
 
-function nextSentence() {
-  if (currentIndex < currentMission.sentences.length - 1) {
-    currentIndex += 1;
-    renderSentence();
-  } else {
+async function nextSentence() {
+  const nextStep = await api(`/learning-sessions/${currentSession.id}/next`);
+
+  if (nextStep.next_action === "MISSION_COMPLETED") {
     completeMission();
+    return;
   }
+
+  if (!nextStep.sentence) {
+    completeMission();
+    return;
+  }
+
+  const nextIndex = currentMission.sentences.findIndex(
+    (s) => s.id === nextStep.sentence.id
+  );
+
+  if (nextIndex >= 0) {
+    currentIndex = nextIndex;
+  }
+
+  renderSentence();
 }
 
 function completeMission() {
   practicePanel.classList.add("hidden");
   completePanel.classList.remove("hidden");
-  const avg = results.length ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length) : 0;
-  summary.innerHTML = `<p>Average score: <strong>${avg}%</strong></p><p>Session ID: ${currentSession.id}</p>`;
+
+  const avg = results.length
+    ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length)
+    : 0;
+
+  summary.innerHTML = `
+    <p>Average score: <strong>${avg}%</strong></p>
+    <p>Session ID: ${currentSession.id}</p>
+  `;
 }
 
 function restart() {
@@ -190,6 +275,7 @@ function restart() {
   currentSession = null;
   currentIndex = 0;
   results = [];
+
   completePanel.classList.add("hidden");
   missionPanel.classList.remove("hidden");
 }
